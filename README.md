@@ -44,7 +44,7 @@
     * val : 40k
 
 ### 2.4. ResNet Configurations
-![Figure 3](./Figures/Figure_03.png)
+![Figure 5](./Figures/Figure_05.png)
 - conv3 : window size 3 * 3, stride 1, padding 1
 - batch normalization : after each convolution and before activation
 - acitivation function : ReLU
