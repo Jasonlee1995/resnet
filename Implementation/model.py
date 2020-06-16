@@ -20,56 +20,28 @@ pretrained_model_urls = {
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
 }
 
-# Model info
-cfgs = {
-    # ImageNet Model
-    18 : ['ImageNet', BasicBlock, [2, 2, 2, 2]],
-    34 : ['ImageNet', BasicBlock, [3, 4, 6, 3]],
-    50 : ['ImageNet', Bottleneck, [3, 4, 6, 3]],
-    101 : ['ImageNet', Bottleneck, [3, 4, 23, 3]],
-    152 : ['ImageNet', Bottleneck, [3, 8, 36, 3]],
-    
-    # CIFAR-10 Model
-    20 : ['CIFAR10', BasicBlock, [3, 3, 3]],
-    32 : ['CIFAR10', BasicBlock, [5, 5, 5]],
-    44 : ['CIFAR10', BasicBlock, [7, 7, 7]],
-    56 : ['CIFAR10', BasicBlock, [9, 9, 9]],
-    110 : ['CIFAR10', BasicBlock, [18, 18, 18]]
-}
-
-
-def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=dilation, groups=groups, bias=False, dilation=dilation)
-
-
-def conv1x1(in_planes, out_planes, stride=1):
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
-
 
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
-                 base_width=64, dilation=1, norm_layer=None):
+    def __init__(self, inplanes, stride=1):
         super(BasicBlock, self).__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        if groups != 1 or base_width != 64:
-            raise ValueError('BasicBlock only supports groups=1 and base_width=64')
-        if dilation > 1:
-            raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
-        # Both self.conv1 and self.downsample layers downsample the input when stride != 1
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = norm_layer(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = norm_layer(planes)
-        self.downsample = downsample
         self.stride = stride
+        if self.stride == 1:
+            self.conv1 = nn.Conv2d(inplanes, inplanes, kernel_size=3, stride=self.stride, padding=1, bias=False)
+        else:
+            self.conv1 = nn.Conv2d(inplanes//2, inplanes, kernel_size=3, stride=self.stride, padding=1, bias=False)
+            self.downsample = nn.Conv2d(inplanes//2, inplanes, kernel_size=1, stride=stride, bias=False)
+        self.bn1 = nn.BatchNorm2d(inplanes)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(inplanes, inplanes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(inplanes)
 
     def forward(self, x):
-        identity = x
+        if self.stride == 1:
+            identity = x
+        else:
+            identity = self.downsample(x)
 
         out = self.conv1(x)
         out = self.bn1(out)
@@ -78,9 +50,6 @@ class BasicBlock(nn.Module):
         out = self.conv2(out)
         out = self.bn2(out)
 
-        if self.downsample is not None:
-            identity = self.downsample(x)
-
         out += identity
         out = self.relu(out)
 
@@ -88,18 +57,13 @@ class BasicBlock(nn.Module):
 
 
 class Bottleneck(nn.Module):
-    # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
-    # while original implementation places the stride at the first 1x1 convolution(self.conv1)
-
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
-                 base_width=64, dilation=1, norm_layer=None):
+    def __init__(self, inplanes, stride=1):
         super(Bottleneck, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         width = int(planes * (base_width / 64.)) * groups
-        # Both self.conv2 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv1x1(inplanes, width)
         self.bn1 = norm_layer(width)
         self.conv2 = conv3x3(width, width, stride, groups, dilation)
@@ -135,71 +99,48 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, mode, block, layers, num_classes=1000, zero_init_residual=False,
-                 groups=1, width_per_group=64):
-        
+    def __init__(self, mode, block, layers, num_classes=1000):
         super(ResNet, self).__init__()
-        self._norm_layer = nn.BatchNorm2d
-
-        self.inplanes = 64
-        self.dilation = 1
-
-        self.groups = groups
-        self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
-        self.bn1 = norm_layer(self.inplanes)
-        self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        self.mode = mode
+        
+        if self.mode == 'ImageNet':
+            self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.bn1 = nn.BatchNorm2d(64)
+            self.relu = nn.ReLU(inplace=True)
+            self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+            self.layer1 = self._make_layer(block, 64, layers[0])
+            self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
+            self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
+            self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+            self.fc = nn.Linear(512 * block.expansion, num_classes)
+        
+        elif self.mode == 'CIFAR10':
+            self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
+            self.bn1 = nn.BatchNorm2d(16)
+            self.relu = nn.ReLU(inplace=True)
+            self.layer1 = self._make_layer(block, 16, layers[0])
+            self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
+            self.layer3 = self._make_layer(block, 64, layers[2], stride=2)
+            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+            self.fc = nn.Linear(64 * block.expansion, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+            elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-        # Zero-initialize the last BN in each residual branch,
-        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
-        # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
-        if zero_init_residual:
-            for m in self.modules():
-                if isinstance(m, Bottleneck):
-                    nn.init.constant_(m.bn3.weight, 0)
-                elif isinstance(m, BasicBlock):
-                    nn.init.constant_(m.bn2.weight, 0)
-
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
-        norm_layer = self._norm_layer
-        downsample = None
-        previous_dilation = self.dilation
-        if dilate:
-            self.dilation *= stride
-            stride = 1
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                conv1x1(self.inplanes, planes * block.expansion, stride),
-                norm_layer(planes * block.expansion),
-            )
-
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
-                            self.base_width, previous_dilation, norm_layer))
+    def _make_layer(self, block, planes, blocks, stride=1):
         self.inplanes = planes * block.expansion
+        layers = [block(self.inplanes, stride=stride)]
         for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes, groups=self.groups,
-                                base_width=self.base_width, dilation=self.dilation,
-                                norm_layer=norm_layer))
+            layers.append(block(self.inplanes))
 
         return nn.Sequential(*layers)
 
-    def _forward_impl(self, x):
-        # See note [TorchScript super()]
+    def _forward_ImageNet(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -215,25 +156,57 @@ class ResNet(nn.Module):
         x = self.fc(x)
 
         return x
+    
+    def _forward_CIFAR10(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+
+        return x
 
     def forward(self, x):
-        return self._forward_impl(x)
+        if self.mode == 'ImageNet':
+            return self._forward_ImageNet(x)
+        
+        elif self.mode == 'CIFAR10':
+            return self._forward_CIFAR10(x)
 
+        
+# Model info
+cfgs = {
+    # ImageNet Model
+    18 : ['ImageNet', BasicBlock, [2, 2, 2, 2]],
+    34 : ['ImageNet', BasicBlock, [3, 4, 6, 3]],
+    50 : ['ImageNet', Bottleneck, [3, 4, 6, 3]],
+    101 : ['ImageNet', Bottleneck, [3, 4, 23, 3]],
+    152 : ['ImageNet', Bottleneck, [3, 8, 36, 3]],
+    
+    # CIFAR-10 Model
+    20 : ['CIFAR10', BasicBlock, [3, 3, 3]],
+    32 : ['CIFAR10', BasicBlock, [5, 5, 5]],
+    44 : ['CIFAR10', BasicBlock, [7, 7, 7]],
+    56 : ['CIFAR10', BasicBlock, [9, 9, 9]],
+    110 : ['CIFAR10', BasicBlock, [18, 18, 18]]
+}
+       
 
 def resnet(depth, num_classes=1000, pretrained=False):
-    if pretrained:
-        model = ResNet(mode=cfgs[depth][0], block=cfgs[depth][1], layers=cfgs[depth][2], num_classes=1000)
-    else:
-        model = ResNet(mode=cfgs[depth][0], block=cfgs[depth][1], layers=cfgs[depth][2], num_classes=num_classes)
     
-    if pretrained:
-        arch = 'resnet'+str(depth)
-        if arch in pretrained_model_urls:
-            state_dict = load_state_dict_from_url(pretrained_model_urls[arch], progress=True)
-            model.load_state_dict(state_dict)
-            if num_classes != 1000:
-                pass
-        else:
-            raise ValueError('No pretrained model in resnet {} model'.format(depth))
+    model = ResNet(mode=cfgs[depth][0], block=cfgs[depth][1], layers=cfgs[depth][2], num_classes=num_classes)
+    arch = 'resnet'+str(depth)
+    
+    if pretrained and (num_classes == 1000) and (arch in pretrained_model_urls):
+        state_dict = load_state_dict_from_url(pretrained_model_urls[arch], progress=True)
+        model.load_state_dict(state_dict)
+    elif pretrained:
+        raise ValueError('No pretrained model in resnet {} model with class number {}'.format(depth, num_classes))
             
     return model
