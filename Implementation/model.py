@@ -23,19 +23,21 @@ pretrained_model_urls = {
 
 class BasicBlock(nn.Module):
     expansion = 1
-
-    def __init__(self, inplanes, stride=1):
+    def __init__(self, inplanes, stride=1, first=False):
         super(BasicBlock, self).__init__()
         self.stride = stride
         if self.stride == 1:
             self.conv1 = nn.Conv2d(inplanes, inplanes, kernel_size=3, stride=self.stride, padding=1, bias=False)
         else:
             self.conv1 = nn.Conv2d(inplanes//2, inplanes, kernel_size=3, stride=self.stride, padding=1, bias=False)
-            self.downsample = nn.Conv2d(inplanes//2, inplanes, kernel_size=1, stride=stride, bias=False)
+            self.downsample = nn.Sequential(
+                nn.Conv2d(inplanes//2, inplanes, kernel_size=1, stride=self.stride, bias=False),
+                nn.BatchNorm2d(inplanes)
+            )
         self.bn1 = nn.BatchNorm2d(inplanes)
-        self.relu = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv2d(inplanes, inplanes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(inplanes)
+        self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
         if self.stride == 1:
@@ -58,24 +60,36 @@ class BasicBlock(nn.Module):
 
 class Bottleneck(nn.Module):
     expansion = 4
-
-    def __init__(self, inplanes, stride=1):
+    def __init__(self, inplanes, stride=1, first=False):
         super(Bottleneck, self).__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        width = int(planes * (base_width / 64.)) * groups
-        self.conv1 = conv1x1(inplanes, width)
-        self.bn1 = norm_layer(width)
-        self.conv2 = conv3x3(width, width, stride, groups, dilation)
-        self.bn2 = norm_layer(width)
-        self.conv3 = conv1x1(width, planes * self.expansion)
-        self.bn3 = norm_layer(planes * self.expansion)
-        self.relu = nn.ReLU(inplace=True)
-        self.downsample = downsample
         self.stride = stride
+        if self.stride != 1:
+            self.conv1 = nn.Conv2d(2*inplanes, inplanes, kernel_size=1, stride=self.stride, bias=False)
+            self.downsample = nn.Sequential(
+                nn.Conv2d(2*inplanes, 4*inplanes, kernel_size=1, stride=self.stride, bias=False),
+                nn.BatchNorm2d(4*inplanes)
+            )
+        elif first == True:
+            self.conv1 = nn.Conv2d(inplanes, inplanes, kernel_size=1, stride=self.stride, bias=False)
+            self.downsample = nn.Sequential(
+                nn.Conv2d(inplanes, 4*inplanes, kernel_size=1, stride=self.stride, bias=False),
+                nn.BatchNorm2d(4*inplanes)
+            )
+        else:
+            self.conv1 = nn.Conv2d(4*inplanes, inplanes, kernel_size=1, stride=self.stride, bias=False)
+        
+        self.bn1 = nn.BatchNorm2d(inplanes)
+        self.conv2 = nn.Conv2d(inplanes, inplanes, kernel_size=3, stride=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(inplanes)
+        self.conv3 = nn.Conv2d(inplanes, 4*inplanes, kernel_size=1, stride=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(4*inplanes)
+        self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        identity = x
+        if self.stride == 1:
+            identity = x
+        else:
+            identity = self.downsample(x)
 
         out = self.conv1(x)
         out = self.bn1(out)
@@ -87,9 +101,6 @@ class Bottleneck(nn.Module):
 
         out = self.conv3(out)
         out = self.bn3(out)
-
-        if self.downsample is not None:
-            identity = self.downsample(x)
 
         out += identity
         out = self.relu(out)
@@ -113,7 +124,7 @@ class ResNet(nn.Module):
             self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
             self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
             self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-            self.fc = nn.Linear(512 * block.expansion, num_classes)
+            self.fc = nn.Linear(block.expansion*512, num_classes)
         
         elif self.mode == 'CIFAR10':
             self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
@@ -123,7 +134,7 @@ class ResNet(nn.Module):
             self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
             self.layer3 = self._make_layer(block, 64, layers[2], stride=2)
             self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-            self.fc = nn.Linear(64 * block.expansion, num_classes)
+            self.fc = nn.Linear(block.expansion*64, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -133,10 +144,9 @@ class ResNet(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def _make_layer(self, block, planes, blocks, stride=1):
-        self.inplanes = planes * block.expansion
-        layers = [block(self.inplanes, stride=stride)]
+        layers = [block(planes, stride=stride, first=True)]
         for _ in range(1, blocks):
-            layers.append(block(self.inplanes))
+            layers.append(block(planes))
 
         return nn.Sequential(*layers)
 
