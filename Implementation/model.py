@@ -108,7 +108,7 @@ class Bottleneck(nn.Module):
         return out
 
 
-class ResNet(nn.Module):
+class _resnet(nn.Module):
 
     def __init__(self, mode, block, layers, num_classes=1000):
         super(ResNet, self).__init__()
@@ -208,9 +208,9 @@ cfgs = {
 }
        
 
-def resnet(depth, num_classes=1000, pretrained=False):
+def resnet(depth, num_classes, pretrained):
     
-    model = ResNet(mode=cfgs[depth][0], block=cfgs[depth][1], layers=cfgs[depth][2], num_classes=num_classes)
+    model = _resnet(mode=cfgs[depth][0], block=cfgs[depth][1], layers=cfgs[depth][2], num_classes=num_classes)
     arch = 'resnet'+str(depth)
     
     if pretrained and (num_classes == 1000) and (arch in pretrained_model_urls):
