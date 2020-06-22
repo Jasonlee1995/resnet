@@ -6,17 +6,18 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-torch.manual_seed(0)
-
 
 class ResNet():
-    def __init__(self, depth=101, num_classes=1000, pretrained=False, gpu_id=0, print_freq=10):
+    def __init__(self, depth=101, num_classes=1000, pretrained=False, 
+                 gpu_id=0, print_freq=10, epoch_print=10, epoch_save=50):
         
         self.depth = depth
         self.num_classes = num_classes
         self.pretrained = pretrained
         self.gpu = gpu_id
         self.print_freq = print_freq
+        self.epoch_print = epoch_print
+        self.epoch_save = epoch_save
         
         torch.cuda.set_device(self.gpu)
         
@@ -36,13 +37,17 @@ class ResNet():
         self.test_acc = list()
         
         
-    def train(self, train_data, test_data, resume=False, start_epoch=0, epochs=100, lr=0.1, momentum=0.9, weight_decay=0.0001):
+    def train(self, train_data, test_data, resume=False, save=False, start_epoch=0, epochs=100, 
+              lr=0.1, momentum=0.9, weight_decay=0.0001, milestones=False):
         # Model to Train Mode
         self.model.train()
         
         # Set Optimizer and Scheduler
         optimizer = optim.SGD(self.model.parameters(), lr, momentum=momentum, weight_decay=weight_decay)
-        scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [epochs//3, epochs*2//3], gamma=0.1)
+        if milestones:
+            scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones, gamma=0.1)
+        else:
+            scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [epochs//2, epochs*3//4], gamma=0.1)
         
         # Optionally Resume from Checkpoint
         if resume:
@@ -61,7 +66,8 @@ class ResNet():
         
         # Train
         for epoch in range(start_epoch, epochs):
-            print('Epoch {} Started...'.format(epoch+1))
+            if epoch % self.epoch_print == 0:
+                print('Epoch {} Started...'.format(epoch+1))
             for i, (X, y) in enumerate(train_data):
                 X, y = X.cuda(self.gpu, non_blocking=True), y.cuda(self.gpu, non_blocking=True)
                 output = self.model(X)
@@ -71,7 +77,7 @@ class ResNet():
                 loss.backward()
                 optimizer.step()
                 
-                if (i+1)%self.print_freq == 0:
+                if (i+1) % self.print_freq == 0:
                     train_acc = 100 * count(output, y) / y.size(0)
                     test_acc, test_loss = self.test(test_data)
                     
@@ -80,12 +86,15 @@ class ResNet():
                     self.test_losses.append(test_loss)
                     self.test_acc.append(test_acc)
                     
-                    print('Iteration : {} - Train Loss : {:.2f}, Test Loss : {:.2f}, '
-                          'Train Acc : {:.2f}, Test Acc : {:.2f}'.format(i+1, loss.item(), test_loss, train_acc, test_acc))
+                    self.model.train()
+                    
+                    if epoch % self.epoch_print == 0:
+                        print('Iteration : {} - Train Loss : {:.2f}, Test Loss : {:.2f}, '
+                              'Train Acc : {:.2f}, Test Acc : {:.2f}'.format(i+1, loss.item(), test_loss, train_acc, test_acc))
                     
             scheduler.step()
-            if epoch % 50 == 0:
-                save_checkpoint(self.depth, self.batch_norm, self.num_classes, self.pretrained, epoch,
+            if save and (epoch % self.epoch_save == 0):
+                save_checkpoint(self.depth, self.num_classes, self.pretrained, epoch,
                                 state={'epoch': epoch+1, 'state_dict':self.model.state_dict(),
                                        'optimizer':optimizer.state_dict()})
             

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 try: from torch.hub import load_state_dict_from_url
 except ImportError: from torch.utils.model_zoo import load_url as load_state_dict_from_url
@@ -21,10 +22,44 @@ pretrained_model_urls = {
 }
 
 
-class BasicBlock(nn.Module):
+class BasicBlock_A(nn.Module):
     expansion = 1
     def __init__(self, inplanes, stride=1, first=False):
-        super(BasicBlock, self).__init__()
+        super(BasicBlock_A, self).__init__()
+        self.stride = stride
+        self.inplanes = inplanes
+        if self.stride == 1:
+            self.conv1 = nn.Conv2d(inplanes, inplanes, kernel_size=3, stride=self.stride, padding=1, bias=False)
+        else:
+            self.conv1 = nn.Conv2d(inplanes//2, inplanes, kernel_size=3, stride=self.stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(inplanes)
+        self.conv2 = nn.Conv2d(inplanes, inplanes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(inplanes)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        if self.stride == 1:
+            identity = x
+        else:
+            identity = F.pad(x[:, :, ::2, ::2], (0, 0, 0, 0, self.inplanes//4, self.inplanes//4), "constant", 0)
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        out += identity
+        out = self.relu(out)
+
+        return out
+    
+
+class BasicBlock_B(nn.Module):
+    expansion = 1
+    def __init__(self, inplanes, stride=1, first=False):
+        super(BasicBlock_B, self).__init__()
         self.stride = stride
         if self.stride == 1:
             self.conv1 = nn.Conv2d(inplanes, inplanes, kernel_size=3, stride=self.stride, padding=1, bias=False)
@@ -111,7 +146,7 @@ class Bottleneck(nn.Module):
 class _resnet(nn.Module):
 
     def __init__(self, mode, block, layers, num_classes=1000):
-        super(ResNet, self).__init__()
+        super(_resnet, self).__init__()
         self.mode = mode
         
         if self.mode == 'ImageNet':
@@ -193,18 +228,18 @@ class _resnet(nn.Module):
 # Model info
 cfgs = {
     # ImageNet Model
-    18 : ['ImageNet', BasicBlock, [2, 2, 2, 2]],
-    34 : ['ImageNet', BasicBlock, [3, 4, 6, 3]],
+    18 : ['ImageNet', BasicBlock_B, [2, 2, 2, 2]],
+    34 : ['ImageNet', BasicBlock_B, [3, 4, 6, 3]],
     50 : ['ImageNet', Bottleneck, [3, 4, 6, 3]],
     101 : ['ImageNet', Bottleneck, [3, 4, 23, 3]],
     152 : ['ImageNet', Bottleneck, [3, 8, 36, 3]],
     
     # CIFAR-10 Model
-    20 : ['CIFAR10', BasicBlock, [3, 3, 3]],
-    32 : ['CIFAR10', BasicBlock, [5, 5, 5]],
-    44 : ['CIFAR10', BasicBlock, [7, 7, 7]],
-    56 : ['CIFAR10', BasicBlock, [9, 9, 9]],
-    110 : ['CIFAR10', BasicBlock, [18, 18, 18]]
+    20 : ['CIFAR10', BasicBlock_A, [3, 3, 3]],
+    32 : ['CIFAR10', BasicBlock_A, [5, 5, 5]],
+    44 : ['CIFAR10', BasicBlock_A, [7, 7, 7]],
+    56 : ['CIFAR10', BasicBlock_A, [9, 9, 9]],
+    110 : ['CIFAR10', BasicBlock_A, [18, 18, 18]]
 }
        
 
