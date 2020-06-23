@@ -7,7 +7,10 @@
 - Using Single GPU (not tested on cpu only)
 
 ## 1. Explain about Implementation
-
+- model.py : ImageNet_18, ImageNet_34, ImageNet_50, ImageNet_101, ImageNet_152, CIFAR10_20, CIFAR10_32, CIFAR10_44, CIFAR10_56, CIFAR10_110
+- train.py : train model
+- utils.py : count right prediction, save checkpoints
+- Add adaptive average pooling layer before FC layer for shape issues
 
 ## 2. Brief Summary of *'Deep Residual Learning for Image Recognition'*
 
