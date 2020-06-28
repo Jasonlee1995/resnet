@@ -24,7 +24,6 @@
 - Solvers might have difficulties in approximating identity mappings by multiple non-linear layers
 - Reformulation may help to precondition the problem
 
-
 ### 2.3. Dataset
 - Image Classification
   * ImageNet 2012
@@ -48,10 +47,10 @@
 
 ### 2.4. ResNet Configurations
 ![Figure 5](./Figures/Figure_05.png)
-- conv3 : window size 3 * 3, stride 1, padding 1
-- batch normalization : after each convolution and before activation
-- acitivation function : ReLU
-- bottleneck building block for 50/101/152
+- Conv3 : window size 3 * 3, stride 1, padding 1
+- Batch normalization : after each convolution and before activation
+- Acitivation function : ReLU
+- Bottleneck building block for 50/101/152
 - No dropout
 - Over 1000 layers : overfitting
 - Shortcuts Design Options
