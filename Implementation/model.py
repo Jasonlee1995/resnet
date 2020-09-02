@@ -54,7 +54,7 @@ class BasicBlock_A(nn.Module):
         out = self.relu(out)
 
         return out
-    
+
 
 class BasicBlock_B(nn.Module):
     expansion = 1
@@ -112,9 +112,9 @@ class Bottleneck(nn.Module):
             )
         else:
             self.conv1 = nn.Conv2d(4*inplanes, inplanes, kernel_size=1, stride=self.stride, bias=False)
-        
+
         self.bn1 = nn.BatchNorm2d(inplanes)
-        self.conv2 = nn.Conv2d(inplanes, inplanes, kernel_size=3, stride=1, bias=False)
+        self.conv2 = nn.Conv2d(inplanes, inplanes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(inplanes)
         self.conv3 = nn.Conv2d(inplanes, 4*inplanes, kernel_size=1, stride=1, bias=False)
         self.bn3 = nn.BatchNorm2d(4*inplanes)
@@ -148,7 +148,7 @@ class _resnet(nn.Module):
     def __init__(self, mode, block, layers, num_classes=1000):
         super(_resnet, self).__init__()
         self.mode = mode
-        
+
         if self.mode == 'ImageNet':
             self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.bn1 = nn.BatchNorm2d(64)
@@ -160,7 +160,7 @@ class _resnet(nn.Module):
             self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
             self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
             self.fc = nn.Linear(block.expansion*512, num_classes)
-        
+
         elif self.mode == 'CIFAR10':
             self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
             self.bn1 = nn.BatchNorm2d(16)
@@ -201,7 +201,7 @@ class _resnet(nn.Module):
         x = self.fc(x)
 
         return x
-    
+
     def _forward_CIFAR10(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
@@ -220,11 +220,11 @@ class _resnet(nn.Module):
     def forward(self, x):
         if self.mode == 'ImageNet':
             return self._forward_ImageNet(x)
-        
+
         elif self.mode == 'CIFAR10':
             return self._forward_CIFAR10(x)
 
-        
+
 # Model info
 cfgs = {
     # ImageNet Model
@@ -233,7 +233,7 @@ cfgs = {
     50 : ['ImageNet', Bottleneck, [3, 4, 6, 3]],
     101 : ['ImageNet', Bottleneck, [3, 4, 23, 3]],
     152 : ['ImageNet', Bottleneck, [3, 8, 36, 3]],
-    
+
     # CIFAR-10 Model
     20 : ['CIFAR10', BasicBlock_A, [3, 3, 3]],
     32 : ['CIFAR10', BasicBlock_A, [5, 5, 5]],
@@ -241,17 +241,17 @@ cfgs = {
     56 : ['CIFAR10', BasicBlock_A, [9, 9, 9]],
     110 : ['CIFAR10', BasicBlock_A, [18, 18, 18]]
 }
-       
+
 
 def resnet(depth, num_classes, pretrained):
-    
+
     model = _resnet(mode=cfgs[depth][0], block=cfgs[depth][1], layers=cfgs[depth][2], num_classes=num_classes)
     arch = 'resnet'+str(depth)
-    
+
     if pretrained and (num_classes == 1000) and (arch in pretrained_model_urls):
         state_dict = load_state_dict_from_url(pretrained_model_urls[arch], progress=True)
         model.load_state_dict(state_dict)
     elif pretrained:
         raise ValueError('No pretrained model in resnet {} model with class number {}'.format(depth, num_classes))
-            
+
     return model
